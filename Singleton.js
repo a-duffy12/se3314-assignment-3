@@ -1,7 +1,9 @@
 // Some code need to be added here, that are common for the module
+
 // generate timer and sequence number values, and the cap value
 let timer = Math.round(Math.random() * (999-1)) + 1;
 let seqNum = Math.round(Math.random() * (999-1)) + 1;
+let port = Math.round(Math.random()*(65535-1) + 1) + 1024;
 let maxTime = Math.pow(2, 32);
 
 module.exports = {
@@ -35,5 +37,11 @@ module.exports = {
     getTimestamp: function() {
 
         return timer;
+    },
+
+    //getPort: return a random port value
+    getPort: function() {
+        
+        return port;
     }
 };

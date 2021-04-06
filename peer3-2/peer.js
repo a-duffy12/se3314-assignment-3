@@ -1,146 +1,58 @@
 // You may need to add some delectation here
 let singleton = require('./Singleton');
 let peerHandler = require('./peerHandler');
-let filePath = require('path');
-let net = require('net');
+let net = require("net");
+let os = require("os");
 
-// variables to track peer properties
-const HOST = "127.0.0.1"; // localhost
-const PORT = 3000; // port used for node.js
-let port = Math.round((Math.random()*65535 - 1) + 1);
-let maxp = 2; // maximum number of peers a peer can connect to // TODO
-let version = 7; // version
-let table = []; // peer table
-let cons = 0; // track number of connections
-let currentFile = filePath.dirname(__filename).split("\\");
-let folderLen = currentFile.length - 1;
-let folderName = currentFile[folderLen].slice(0, currentFile[folderLen].indexOf("-"));
-
-// start a server
+//set up peer parameters
 singleton.init();
-let server = net.createServer();
-server.listen(port, HOST); // listen for connections
-let client = new net.Socket();
+let ifaces = os.networkInterfaces();
+let HOST = "";
+let PORT = singleton.getPort();
 
-if (typeof(process.argv[3]) === "undefined") // no argument given for -p (initial node)
+// get localhost address
+Object.keys(ifaces).forEach((ifname) => {
+    ifaces[ifname].forEach((iface) => {
+        if ("IPv4" == iface.family && iface.internal !== false)
+        {
+            HOST = iface.address;
+        }
+    });
+});
+
+// parse folder for peer name and max peer count
+let path = __dirname.split("\\");
+let folder = path[path.length-1].split("-")[0];
+let max = path[path.length-1].split("-")[1];
+
+if (process.argv.length > 2) // arguments specified
 {
-    console.log(`This peer address is ${HOST}:${port} located at ${folderName}`);
+    let flag = process.argv[2]; // check for -p flag
+    let addPort = process.argv[3].split(":");
 
-    // when the server receives a connection
-    server.on("connection", (sock) => { 
-        peerHandler.handlePeerJoining(sock, version, maxp); // handle any peers that join
-        cons++;
+    let address = addPort[0];
+    let port = addPort[1];
 
-        if (cons > maxp) // peer table is full
-        {
-            console.log(`Peer table full: ${sock.remoteAddress}:${sock.remotePort} redirected`);
-        }
-        else // peer table has open slots
-        {
-            console.log(`Connected from peer ${sock.remoteAddress}:${sock.remotePort}`);
-        }
+    // set up peer as a client
+    let client = new net.Socket();
 
-        sock.on("end", (err) => { // TODO
-            if (err) throw err;
-            sock.on("close", (err) => {
-                if (err) throw err;
-            })
-        })
+    // connect to an existing peer
+    client.connect(port, address, () => {
+        let peerTable = [];
+        peerHandler.handleCommunications(client, max, folder, peerTable);
     });
 }
-else // argument given for -p (connecting to established node)
+else // arguments not specified
 {
-    let addPort = process.argv[3]; // get command line ip address and port
-    let port = addPort.substring(addPort.indexOf(":") + 1); // get port
-    let address = addPort.slice(0, addPort.indexOf(":")); // get ip address
+    // set up peer as a server
+    let server = net.createServer();
+    server.listen(PORT, HOST);
+    console.log(`This peer address is ${HOST}:${PORT} located at ${folder}`);
 
-    // connect client to server
-    client.connect(port, address, () => { 
-        singleton.init();
-        initPeer();
-    });
+    let peerTable = [];
 
-    // when the client receives a packet
-    client.on('data', (res) => {
-
-        if (res.slice(0, 1).readUInt8(0) == 7) // check if version is correct
-        {
-            if (res.slice(1, 2).readUInt8(0) == 1) // if welcome is received
-            {
-                console.log(`Connected to peer ${res.slice(5, 10).toString()}:${res.slice(10, 12).readUInt16BE()} at timestamp: ${singleton.getTimestamp()}`);
-                console.log(`This peer address is ${HOST}:${client.address().port} located at ${folderName}`);
-                console.log(`Received ack from ${res.slice(5, 10).toString()}:${res.slice(10, 12).readUInt16BE()}`);
-
-                if (res.slice(2, 4).readUInt16BE() >= 1)
-                {
-                    console.log(`   which is peered with:[${res.slice(12, 13).readUInt8()}.${res.slice(13, 14).readUInt8()}.${res.slice(14, 15).readUInt8()}.${res.slice(15, 16).readUInt8()}:${res.slice(16, 18).readUInt16BE()}]`);
-                }
-
-            }
-            else if (res.slice(1, 2).readUInt8(0) == 2) // if redirect is received
-            {
-                console.log(`The join has been declined, try joining one of the following peers`);
-
-                let attempts = res.slice(2, 4).readUInt16BE(); // get number of possible attempts 
-
-                if (attempts > 1) // TODO temp
-                {
-                    attempts = 1;
-                }
-
-                // get all ip and ports sent
-                for (let i = 1; i <= attempts; i++)
-                {
-                    tAddress = res.slice(12+(i*0), 12+(i*1)).readUInt8(0) + "." + res.slice(12+(i*1), 12+(i*2)).readUInt8(0) + "." + res.slice(12+(i*2), 12+(i*3)).readUInt8(0) + "." + res.slice(12+(i*3), 12+(i*4)).readUInt8(0);
-                    tPort = Number(res.slice(12+(i*4), 12+(i*6)).readUInt16BE());
-
-                    console.log(`   >> ${tAddress}:${tPort}`);
-                }
-                client.end(); // get rid of instance and start again
-            }
-        }
-        else
-        {
-            console.log(`Incorrect version, discarded packet`);
-        }
-    });
-
-    // when the client closes the connection
-    client.on(('close'), () => {
-        console.log(`Connection closed`);
-    });
-
-    // when the client leaves
-    client.on(("end"), (err) => {
-        if (err) throw err;
-    });
-}
-
-function initPeer()
-{
-    let newCons = 1;
-        let clientServer = net.createServer();
-        clientServer.listen(client.address().port, HOST);
-        
-        clientServer.on("connection", (sock) => {
-            newCons++;
-
-            if (newCons > maxp)
-            {
-                console.log(`Peer table full: ${sock.remoteAddress}:${sock.remotePort} redirected`);;
-                client.end();
-            }
-            else
-            {
-                console.log(`Connected from peer ${sock.remoteAddress}:${sock.remotePort}`);
-                peerHandler.handlePeerJoining(sock, version, maxp);
-            }
-
-            sock.on("end", (err) => { // TODO
-                if (err) throw err;
-                sock.on("close", (err) => {
-                    if (err) throw err;
-                })
-            })
-        });
+    // handle connections to the peer
+    server.on("connection", (sock) => {
+        peerHandler.handleJoin(sock, max, folder, peerTable);
+    })
 }
