@@ -49,8 +49,7 @@ function handlePeer(sock, sender, table)
 // function to handle a decline
 function declinePeer(sock, sender, table)
 {
-    let addPort = sock.remoteAddress + ":" + sock.remotePort;
-    console.log(`\nPeer table full: ${addPort} redirected`);
+    console.log(`\nPeer table full: ${sock.remoteAddress + ":" + sock.remotePort} redirected`);
 
     // create a packet
     cPTPpacket.init(7, 2, sender, table);
@@ -69,7 +68,7 @@ function communicate(peer, max, folder, table)
         // read the packet
         let spot = 0; 
         let version = parseBitPacket(packet, 0, 3);
-        spot +=3;
+        spot += 3;
         let type = parseBitPacket(packet, 3, 8);
         spot += 8;
         let peerCount = parseBitPacket(packet, 11, 13);
@@ -80,100 +79,103 @@ function communicate(peer, max, folder, table)
         spot += size*8;
 
         let newTable = [];
-        if (peerCount > 0)
+        if (version == 7)
         {
-            for (let i = 0; i < peerCount; i++)
+            if (peerCount > 0)
             {
-                let oct1 = parseBitPacket(packet, spot, 8);
-                spot += 8;
-                let oct2 = parseBitPacket(packet, spot, 8);
-                spot += 8;
-                let oct3 = parseBitPacket(packet, spot, 8);
-                spot += 8;
-                let oct4 = parseBitPacket(packet, spot, 8);
-                spot += 8;
-                let port = parseBitPacket(packet, spot, 16);
-                spot += 16
+                for (let i = 0; i < peerCount; i++)
+                {
+                    let oct1 = parseBitPacket(packet, spot, 8);
+                    spot += 8;
+                    let oct2 = parseBitPacket(packet, spot, 8);
+                    spot += 8;
+                    let oct3 = parseBitPacket(packet, spot, 8);
+                    spot += 8;
+                    let oct4 = parseBitPacket(packet, spot, 8);
+                    spot += 8;
+                    let port = parseBitPacket(packet, spot, 16);
+                    spot += 16
 
-                // create a new peer
-                let entry = {
-                    address: oct1 + "." + oct2 + "." + oct3 + "." + oct4,
-                    port: port
+                    // create a new peer
+                    let entry = {
+                        address: oct1 + "." + oct2 + "." + oct3 + "." + oct4,
+                        port: port
+                    }
+
+                    newTable.push(entry); // add peer to table
                 }
-
-                newTable.push(entry); // add peer to table
-            }
-        }
-
-        if (type == 1) // allowed, not full
-        {
-            isFull[peer.remotePort] = false;
-            console.log(`Connected to peer ${sender}:${peer.remotePort} at timestamep ${singleton.getTimestamp()}`);
-
-            // record connected peer
-            let newPeer = {
-                address: peer.remoteAddress,
-                port: peer.remotePort
             }
 
-            table.push(newPeer); // add new peer to table
-        
-            let server = net.createServer();
-            server.listen(peer.localPort, peer.localAddress);
-            console.log(`This peer address is ${peer.localAddress}:${peer.localPort} located at ${folder}`);
-        
-            // when this new server receives a connection
-            server.on("connection", (sock) => {
-                let count = table.length;
-
-                if (count < max)
-                {
-                    handlePeer(sock, folder, table);
-                }
-                else if (count == max)
-                {
-                    declinePeer(sock, folder, table);
-                }
-            });
-
-            console.log(`Received ack from ${sender}:${peer.remotePort}`);
-
-            if (peerCount > 0) // connected peers
+            if (type == 1) // allowed, not full
             {
-                let out = " which is peered with: ";
+                isFull[peer.remotePort] = false;
+                console.log(`Connected to ${sender}:${peer.remotePort} at timestamep ${singleton.getTimestamp()}`);
 
-                for (let i = 0; i < peerCount-1; i++)
-                {
-                    out += "[" + newTable[i].address + ":" + newTable[i].port + "],";
+                // record connected peer
+                let newPeer = {
+                    address: peer.remoteAddress,
+                    port: peer.remotePort
                 }
-                out += "[" + newTable[peerCount-1].address + ":" + newTable[peerCount-1].port + "]";
 
-                console.log(out); // output the connected peers
+                table.push(newPeer); // add new peer to table
+            
+                let server = net.createServer();
+                server.listen(peer.localPort, peer.localAddress);
+                console.log(`This peer address is ${peer.localAddress}:${peer.localPort} located at ${folder}`);
+            
+                // when this new server receives a connection
+                server.on("connection", (sock) => {
+                    let count = table.length;
+
+                    if (count < max)
+                    {
+                        handlePeer(sock, folder, table);
+                    }
+                    else if (count == max)
+                    {
+                        declinePeer(sock, folder, table);
+                    }
+                });
+
+                console.log(`Received ack from ${sender}:${peer.remotePort}`);
+
+                if (peerCount > 0) // connected peers
+                {
+                    let out = " which is peered with: ";
+
+                    for (let i = 0; i < peerCount-1; i++)
+                    {
+                        out += "[" + newTable[i].address + ":" + newTable[i].port + "],";
+                    }
+                    out += "[" + newTable[peerCount-1].address + ":" + newTable[peerCount-1].port + "]";
+
+                    console.log(out); // output the connected peers
+                }
             }
-        }
-        else // declined, full
-        {
-            console.log(`Received ack from ${sender}:${peer.remotePort}`);
-            isFull[peer.remotePort] = true;
-
-            options = newTable; // give options based off of connected peers
-            max = max;
-            folder = folder;
-
-            if (peerCount > 0) // connected peers
+            else // declined, full
             {
-                let out = " which is peered with: ";
+                console.log(`Received ack from ${sender}:${peer.remotePort}`);
+                isFull[peer.remotePort] = true;
 
-                for (let i = 0; i < peerCount-1; i++)
+                options = newTable; // give options based off of connected peers
+                max = max;
+                folder = folder;
+
+                if (peerCount > 0) // connected peers
                 {
-                    out += "[" + newTable[i].address + ":" + newTable[i].port + "],";
+                    let out = " which is peered with: ";
+
+                    for (let i = 0; i < peerCount-1; i++)
+                    {
+                        out += "[" + newTable[i].address + ":" + newTable[i].port + "],";
+                    }
+                    out += "[" + newTable[peerCount-1].address + ":" + newTable[peerCount-1].port + "]";
+
+                    console.log(out); // output the connected peers
                 }
-                out += "[" + newTable[peerCount-1].address + ":" + newTable[peerCount-1].port + "]";
 
-                console.log(out); // output the connected peers
+                console.log(`\nThe join has been declined; the auto-join process is performing...\n`);
             }
-
-            console.log(`\nThe join has been declined; the auto-join process is performing...\n`);
         }
     });
 

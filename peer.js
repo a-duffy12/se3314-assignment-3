@@ -27,9 +27,7 @@ let max = path[path.length-1].split("-")[1];
 
 if (process.argv.length > 2) // arguments specified
 {
-    let flag = process.argv[2]; // check for -p flag
     let addPort = process.argv[3].split(":");
-
     let address = addPort[0];
     let port = addPort[1];
 
