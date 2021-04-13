@@ -32,7 +32,7 @@ module.exports = {
 
         if (peerCount > 0) // if the peer table was not empty
         {
-            let spot = i*6; // where we can write more bits
+            let spot = i*8; // where we can write more bits
 
             for (let k = 0; k < peerCount; k++)
             {
@@ -59,7 +59,7 @@ module.exports = {
 
     getPacket: function ()
     {
-        return this.packet
+        return this.packet;
     }
 };
 
